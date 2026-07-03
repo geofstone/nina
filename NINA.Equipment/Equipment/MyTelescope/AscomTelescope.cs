@@ -72,9 +72,12 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool AtPark => GetProperty(nameof(Telescope.AtPark), false);
 
-        public bool CanFindHome => GetProperty(nameof(Telescope.CanFindHome), false);
+        // The OverrideCan* profile settings let the user force these capabilities on for drivers that
+        // implement the underlying method (e.g. some SiTech/PlaneWave V1 drivers) but misreport the
+        // matching capability flag as false. See ITelescopeSettings.OverrideCanPark.
+        public bool CanFindHome => profileService.ActiveProfile.TelescopeSettings.OverrideCanFindHome || GetProperty(nameof(Telescope.CanFindHome), false);
 
-        public bool CanPark => GetProperty(nameof(Telescope.CanPark), false);
+        public bool CanPark => profileService.ActiveProfile.TelescopeSettings.OverrideCanPark || GetProperty(nameof(Telescope.CanPark), false);
 
         public bool CanPulseGuide => GetProperty(nameof(Telescope.CanPulseGuide), false);
 
@@ -101,7 +104,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool CanSyncAltAz => GetProperty(nameof(Telescope.CanSyncAltAz), false);
 
-        public bool CanUnpark => GetProperty(nameof(Telescope.CanUnpark), false);
+        public bool CanUnpark => profileService.ActiveProfile.TelescopeSettings.OverrideCanUnpark || GetProperty(nameof(Telescope.CanUnpark), false);
 
         public Coordinates Coordinates => new Coordinates(RightAscension, Declination, EquatorialSystem, Coordinates.RAType.Hours);
 

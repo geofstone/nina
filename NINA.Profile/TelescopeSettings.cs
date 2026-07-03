@@ -40,6 +40,9 @@ namespace NINA.Profile {
             settleTime = 5;
             noSync = false;
             timeSync = true;
+            overrideCanPark = false;
+            overrideCanUnpark = false;
+            overrideCanFindHome = false;
             telescopeLocationSyncDirection = TelescopeLocationSyncDirection.PROMPT;
         }
 
@@ -218,6 +221,42 @@ namespace NINA.Profile {
             set {
                 if(timeSync != value) {
                     timeSync = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private bool overrideCanPark;
+        [DataMember]
+        public bool OverrideCanPark {
+            get => overrideCanPark;
+            set {
+                if(overrideCanPark != value) {
+                    overrideCanPark = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private bool overrideCanUnpark;
+        [DataMember]
+        public bool OverrideCanUnpark {
+            get => overrideCanUnpark;
+            set {
+                if(overrideCanUnpark != value) {
+                    overrideCanUnpark = value;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
+        private bool overrideCanFindHome;
+        [DataMember]
+        public bool OverrideCanFindHome {
+            get => overrideCanFindHome;
+            set {
+                if(overrideCanFindHome != value) {
+                    overrideCanFindHome = value;
                     RaisePropertyChanged();
                 }
             }
