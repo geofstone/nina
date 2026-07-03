@@ -1063,6 +1063,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         protected override Task PostConnect() {
             Initialize();
+            Logger.Info($"{Name} - ASCOM Interface Version: {InterfaceVersion}");
             EquatorialSystem = DetermineEquatorialSystem();
             trackingModes = GetTrackingModes();
             CheckMountTime();
