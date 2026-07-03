@@ -12,6 +12,8 @@ More details at <a href="https://nighttime-imaging.eu/donate/" target="_blank">n
 - Autofocus after HFR Increase HFRTrendPercentage is now calculated correctly and will no longer underestimate the change on large HFR drift
 - ToupTek based filter wheels and focusers will no longer be listed in the camera connector.
 - When updating the application, the color schema upgrades now properly apply updated or added colors
+- Using the manual mount move buttons no longer crashes the application with ASCOM V1 drivers (e.g. some older SiTech/PlaneWave drivers) that do not implement AxisRates; the requested move rate is used unclamped instead.
+- Slewing to Alt/Az with ASCOM V1 drivers that implement the synchronous SlewToAltAz but not the async variant now falls back to the synchronous method instead of failing the slew.
 
 ## Improvements
 - **Autofocus after HFR Increase Trigger**
