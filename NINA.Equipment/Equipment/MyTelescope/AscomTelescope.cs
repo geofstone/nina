@@ -72,9 +72,12 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool AtPark => GetProperty(nameof(Telescope.AtPark), false);
 
-        public bool CanFindHome => GetProperty(nameof(Telescope.CanFindHome), false);
+        // The OverrideCan* profile settings let the user force these capabilities on for drivers that
+        // implement the underlying method (e.g. some SiTech/PlaneWave V1 drivers) but misreport the
+        // matching capability flag as false. See ITelescopeSettings.OverrideCanPark.
+        public bool CanFindHome => profileService.ActiveProfile.TelescopeSettings.OverrideCanFindHome || GetProperty(nameof(Telescope.CanFindHome), false);
 
-        public bool CanPark => GetProperty(nameof(Telescope.CanPark), false);
+        public bool CanPark => profileService.ActiveProfile.TelescopeSettings.OverrideCanPark || GetProperty(nameof(Telescope.CanPark), false);
 
         public bool CanPulseGuide => GetProperty(nameof(Telescope.CanPulseGuide), false);
 
@@ -101,7 +104,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool CanSyncAltAz => GetProperty(nameof(Telescope.CanSyncAltAz), false);
 
-        public bool CanUnpark => GetProperty(nameof(Telescope.CanUnpark), false);
+        public bool CanUnpark => profileService.ActiveProfile.TelescopeSettings.OverrideCanUnpark || GetProperty(nameof(Telescope.CanUnpark), false);
 
         public Coordinates Coordinates => new Coordinates(RightAscension, Declination, EquatorialSystem, Coordinates.RAType.Hours);
 
@@ -593,10 +596,19 @@ namespace NINA.Equipment.Equipment.MyTelescope {
                     TrackingEnabled = false;
                     TargetCoordinates = coordinates.Transform(EquatorialSystem);
 
-                    if (CanSlewAltAzAsync) {
-                        await device.SlewToAltAzTaskAsync(azimuth: coordinates.Azimuth.Degree, altitude: coordinates.Altitude.Degree, cancellationToken: token);
-                        InvalidatePropertyCache();
-                    } else {
+                    var useAsync = CanSlewAltAzAsync;
+                    if (useAsync) {
+                        try {
+                            await device.SlewToAltAzTaskAsync(azimuth: coordinates.Azimuth.Degree, altitude: coordinates.Altitude.Degree, cancellationToken: token);
+                            InvalidatePropertyCache();
+                        } catch (ASCOM.NotImplementedException) {
+                            // V1 drivers (e.g. SiTech) can report CanSlewAltAzAsync = true but only implement the
+                            // synchronous SlewToAltAz. Fall back to it rather than failing the slew entirely.
+                            Logger.Info($"{Name} - SlewToAltAzAsync not implemented; falling back to synchronous SlewToAltAz");
+                            useAsync = false;
+                        }
+                    }
+                    if (!useAsync) {
                         device.SlewToAltAz(Azimuth: coordinates.Azimuth.Degree, Altitude: coordinates.Altitude.Degree);
                         await Task.Delay(200, token);
                         while (Slewing) {
@@ -766,7 +778,20 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
             double max = double.MinValue;
             double min = double.MaxValue;
-            IAxisRates r = device.AxisRates(axis);
+            IAxisRates r;
+            try {
+                r = device.AxisRates(axis);
+            } catch (ASCOM.NotImplementedException) {
+                // AxisRates requires ITelescopeV2+; V1 drivers (e.g. SiTech) don't implement it. Without the
+                // permitted rate ranges we cannot clamp, so use the requested rate unclamped rather than throwing
+                // (an unguarded throw here escapes to the dispatcher and crashes the application on manual moves).
+                Logger.Info($"{Name} - AxisRates not implemented; using requested move rate {value} unclamped");
+                return result;
+            } catch (Exception ex) {
+                // Some drivers throw the wrong exception type for unimplemented properties.
+                Logger.Warning($"{Name} - AxisRates failed: {ex.Message}; using requested move rate {value} unclamped");
+                return result;
+            }
             IEnumerator e = r.GetEnumerator();
             foreach (IRate item in r) {
                 if (min > item.Minimum) {
@@ -1038,6 +1063,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         protected override Task PostConnect() {
             Initialize();
+            Logger.Info($"{Name} - ASCOM Interface Version: {InterfaceVersion}");
             EquatorialSystem = DetermineEquatorialSystem();
             trackingModes = GetTrackingModes();
             CheckMountTime();

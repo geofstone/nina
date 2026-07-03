@@ -12,6 +12,8 @@ More details at <a href="https://nighttime-imaging.eu/donate/" target="_blank">n
 - Autofocus after HFR Increase HFRTrendPercentage is now calculated correctly and will no longer underestimate the change on large HFR drift
 - ToupTek based filter wheels and focusers will no longer be listed in the camera connector.
 - When updating the application, the color schema upgrades now properly apply updated or added colors
+- Using the manual mount move buttons no longer crashes the application with ASCOM V1 drivers (e.g. some older SiTech/PlaneWave drivers) that do not implement AxisRates; the requested move rate is used unclamped instead.
+- Slewing to Alt/Az with ASCOM V1 drivers that implement the synchronous SlewToAltAz but not the async variant now falls back to the synchronous method instead of failing the slew.
 
 ## Improvements
 - **Autofocus after HFR Increase Trigger**
@@ -23,6 +25,8 @@ More details at <a href="https://nighttime-imaging.eu/donate/" target="_blank">n
 - Filterwheels will now poll in the background their position in case the wheel is moved by another client. This ensures that N.I.N.A. always has the correct filter position even when the wheel was moved outside of N.I.N.A.
 - Enhanced sequencer exit handling to more reliably detect actual changes and prevent false-positive change prompts.
 - Clicking on slew Alt/Az in the Mount equipment page with Mount drivers that do not support slewing to Alt/Az, will now fallback to slewing to RA/Dec coordinates instead of doing nothing.
+- **Mount park/home capability overrides** - new mount options to force Park, Unpark and Find Home capability on for ASCOM drivers that implement the underlying method but misreport the matching capability flag as false (e.g. some older SiTech/PlaneWave drivers). When enabled, the application calls the driver's real Park()/Unpark()/FindHome() directly.
+- Parking a mount that reports it cannot park (CanPark = false) now fails loudly instead of silently slewing to the celestial pole and reporting a successful park. This avoids leaving the mount in a position that does not match its real mechanical park - important for enclosures that gate roof operation on a physically parked telescope.
 
 ## Features
 

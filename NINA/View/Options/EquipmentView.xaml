@@ -668,6 +668,66 @@
                             </CheckBox>
                         </UniformGrid>
                     </UniformGrid>
+
+                    <UniformGrid Columns="2">
+                        <UniformGrid
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Columns="2">
+                            <TextBlock
+                                MinWidth="200"
+                                VerticalAlignment="Center"
+                                Text="{ns:Loc LblTelescopeOverrideCanPark}">
+                                <TextBlock.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanParkTooltip}" />
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                            <CheckBox HorizontalAlignment="Left" IsChecked="{Binding OverrideCanPark}">
+                                <CheckBox.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanParkTooltip}" />
+                                </CheckBox.ToolTip>
+                            </CheckBox>
+                        </UniformGrid>
+                        <UniformGrid
+                            Margin="10,5,0,0"
+                            VerticalAlignment="Center"
+                            Columns="2">
+                            <TextBlock
+                                MinWidth="200"
+                                VerticalAlignment="Center"
+                                Text="{ns:Loc LblTelescopeOverrideCanUnpark}">
+                                <TextBlock.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanUnparkTooltip}" />
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                            <CheckBox HorizontalAlignment="Left" IsChecked="{Binding OverrideCanUnpark}">
+                                <CheckBox.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanUnparkTooltip}" />
+                                </CheckBox.ToolTip>
+                            </CheckBox>
+                        </UniformGrid>
+                    </UniformGrid>
+
+                    <UniformGrid Columns="2">
+                        <UniformGrid
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Columns="2">
+                            <TextBlock
+                                MinWidth="200"
+                                VerticalAlignment="Center"
+                                Text="{ns:Loc LblTelescopeOverrideCanFindHome}">
+                                <TextBlock.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanFindHomeTooltip}" />
+                                </TextBlock.ToolTip>
+                            </TextBlock>
+                            <CheckBox HorizontalAlignment="Left" IsChecked="{Binding OverrideCanFindHome}">
+                                <CheckBox.ToolTip>
+                                    <TextBlock Text="{ns:Loc LblTelescopeOverrideCanFindHomeTooltip}" />
+                                </CheckBox.ToolTip>
+                            </CheckBox>
+                        </UniformGrid>
+                    </UniformGrid>
                 </StackPanel>
             </GroupBox>
             <GroupBox

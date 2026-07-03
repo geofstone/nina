@@ -149,14 +149,16 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Telescope {
                         } else {
                             Logger.Info("Mount commanded to park but it is already parked");
                         }
-                    } else { // Telescope is incapable of parking. Slew safely to the celestial pole and stop tracking instead
-                        Coordinates targetCoords = GetHomeCoordinates(telescopeInfo.Coordinates);
-                        Logger.Info($"Mount cannot park. Will slew to RA {targetCoords.RAString}, Dec {targetCoords.DecString}");
-                        await SlewToCoordinatesAsync(targetCoords, timeoutCts.Token);
-
-                        Logger.Trace("Mount will stop tracking");
-                        result = SetTrackingEnabled(false);
-                        await updateTimer.WaitForNextUpdate(timeoutCts.Token);
+                    } else {
+                        // This mount reports it cannot perform a driver park (CanPark = false). The former
+                        // "slew to the celestial pole and stop tracking" fallback is intentionally disabled: it does
+                        // not reach the mount's real mechanical park position, which is unsafe for enclosures that
+                        // gate roof operation on a physically parked telescope. Fail loudly so the operator and any
+                        // automation know the mount is NOT parked. Enable the "Force park capability" mount option
+                        // if the driver actually implements Park() but misreports the capability flag.
+                        Logger.Error("Mount reports CanPark = false and the park fallback is disabled - mount was NOT parked");
+                        Notification.ShowError(Loc.Instance["LblTelescopeCannotParkNoFallback"]);
+                        result = false;
                     }
                 } catch (OperationCanceledException) {
                     if (token.IsCancellationRequested != true) {
@@ -199,33 +201,6 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Telescope {
             return false;
         }
 
-        /// <summary>
-        /// Finds a theoretical home position for the telescope to return to. It will be pointing to the Celestial Pole, but in such a way that
-        /// CW bar should be nearly vertical, and there is no meridian flip involved.
-        /// </summary>
-        /// <param name="currentCoordinates"></param>
-        /// <returns></returns>
-        private Coordinates GetHomeCoordinates(Coordinates currentCoordinates) {
-            double siderealTime = AstroUtil.GetLocalSiderealTimeNow(profileService.ActiveProfile.AstrometrySettings.Longitude);
-            if (siderealTime > 24) {
-                siderealTime -= 24;
-            }
-            if (siderealTime < 0) {
-                siderealTime += 24;
-            }
-            double timeToMed = currentCoordinates.RA - siderealTime;
-            Coordinates returnCoordinates = new Coordinates(Angle.ByHours(0), Angle.ByDegree(0), Epoch.J2000);
-
-            // If your latitude is exactly 0 derees, congratulations. We'll still put you in the northern hemisphere.
-            if (profileService.ActiveProfile.AstrometrySettings.Latitude >= 0) {
-                returnCoordinates.Dec = 89;
-            } else {
-                returnCoordinates.Dec = -89;
-            }
-
-            returnCoordinates.RA = siderealTime + 6 * Math.Sign(timeToMed);
-            return returnCoordinates;
-        }
 
         public async Task<bool> UnparkTelescope(IProgress<ApplicationStatus> progress, CancellationToken token) {
             bool success = false;
