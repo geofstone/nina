@@ -6923,6 +6923,9 @@ Additionally, it is essential that the ASCOM driver used also supports this 32-b
   <data name="LblTelescopeOverrideCanFindHomeTooltip" xml:space="preserve">
     <value>When enabled, the application treats the mount as home-capable even if the ASCOM driver reports CanFindHome = false, and will call the driver's FindHome() method directly. Only enable this if the mount actually has a working homing routine, otherwise FindHome will fail.</value>
   </data>
+  <data name="LblTelescopeCannotParkNoFallback" xml:space="preserve">
+    <value>Mount reports it cannot park (CanPark = false) and the park fallback is disabled. The mount was NOT parked. Enable "Force park capability" in the mount options if the driver implements Park() but misreports the capability.</value>
+  </data>
   <data name="LblCoordinatesMountSync" xml:space="preserve">
     <value>Coordinates sync</value>
   </data>

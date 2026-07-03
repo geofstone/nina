@@ -24,6 +24,7 @@ More details at <a href="https://nighttime-imaging.eu/donate/" target="_blank">n
 - Enhanced sequencer exit handling to more reliably detect actual changes and prevent false-positive change prompts.
 - Clicking on slew Alt/Az in the Mount equipment page with Mount drivers that do not support slewing to Alt/Az, will now fallback to slewing to RA/Dec coordinates instead of doing nothing.
 - **Mount park/home capability overrides** - new mount options to force Park, Unpark and Find Home capability on for ASCOM drivers that implement the underlying method but misreport the matching capability flag as false (e.g. some older SiTech/PlaneWave drivers). When enabled, the application calls the driver's real Park()/Unpark()/FindHome() directly.
+- Parking a mount that reports it cannot park (CanPark = false) now fails loudly instead of silently slewing to the celestial pole and reporting a successful park. This avoids leaving the mount in a position that does not match its real mechanical park - important for enclosures that gate roof operation on a physically parked telescope.
 
 ## Features
 
