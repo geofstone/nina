@@ -14,6 +14,7 @@ More details at <a href="https://nighttime-imaging.eu/donate/" target="_blank">n
 - When updating the application, the color schema upgrades now properly apply updated or added colors
 - Using the manual mount move buttons no longer crashes the application with ASCOM V1 drivers (e.g. some older SiTech/PlaneWave drivers) that do not implement AxisRates; the requested move rate is used unclamped instead.
 - Slewing to Alt/Az with ASCOM V1 drivers that implement the synchronous SlewToAltAz but not the async variant now falls back to the synchronous method instead of failing the slew.
+- Park, Unpark and Find Home now work with ASCOM V1 drivers (e.g. some older SiTech/PlaneWave drivers). The ASCOM library otherwise blocks these on V1 drivers and forces the parked state to always read false; the application now calls the driver's real methods directly and reports the true parked state, so park-dependent guards, dome roof safety and the mount status display behave correctly.
 
 ## Improvements
 - **Autofocus after HFR Increase Trigger**
