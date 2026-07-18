@@ -21,6 +21,7 @@ using NINA.Profile.Interfaces;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Immutable;
@@ -50,6 +51,83 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         private IProfileService profileService;
 
+        // ASCOM drivers that report InterfaceVersion == 1 are hard-gated by the ASCOM.Com DriverAccess
+        // wrapper: FindHome() throws, and AtPark plus the Can(Park/Unpark/FindHome/SetPark) capabilities
+        // are forced to false without ever reaching the driver. That blocks Park/Unpark/FindHome and,
+        // worse, makes NINA believe the mount is never parked (defeating slew guards and dome safety).
+        // Such drivers (e.g. some SiTech/PlaneWave V1 drivers) do implement the underlying COM members,
+        // so for a local COM V1 device we reach past the version gate to the raw COM object the wrapper
+        // holds internally and drive it directly. See ResolveRawComDevice.
+        private dynamic rawComDevice;
+
+        // Generous ceiling so a driver that never flips AtPark/Slewing cannot hang a sequence forever.
+        private static readonly TimeSpan RAW_COM_OPERATION_TIMEOUT = TimeSpan.FromMinutes(5);
+
+        /// <summary>True when a local COM driver reports InterfaceVersion 1 and the raw COM object was resolved.</summary>
+        private bool UseRawCom => rawComDevice != null;
+
+        /// <summary>
+        /// Resolves the live COM driver object that the ASCOM.Com DriverAccess wrapper keeps in its internal
+        /// 'Device' property (a DynamicAccess forwarder), so V2-gated members can be called directly. Only
+        /// engages for local COM drivers reporting InterfaceVersion 1; no-op (and clears the cache) otherwise.
+        /// </summary>
+        private void ResolveRawComDevice() {
+            rawComDevice = null;
+            if (IsAlpacaDevice() || InterfaceVersion > 1) {
+                return;
+            }
+            try {
+                object rawObj = null;
+                for (var t = ((object)device)?.GetType(); t != null && rawObj == null; t = t.BaseType) {
+                    var prop = t.GetProperty("Device", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    if (prop != null) {
+                        rawObj = prop.GetValue(device);
+                    }
+                }
+                if (rawObj != null) {
+                    rawComDevice = rawObj;
+                    Logger.Info($"{Name} - InterfaceVersion 1 detected; raw COM fallback resolved for Park/Unpark/FindHome");
+                } else {
+                    Logger.Warning($"{Name} - InterfaceVersion 1 detected but the raw COM object could not be resolved; Park/Unpark/FindHome may be unavailable");
+                }
+            } catch (Exception ex) {
+                rawComDevice = null;
+                Logger.Warning($"{Name} - Failed to resolve raw COM object for the InterfaceVersion 1 fallback: {ex.Message}");
+            }
+        }
+
+        /// <summary>Reads a boolean capability/state straight from the raw COM driver, bypassing the version gate.</summary>
+        private bool ReadRawBool(string propertyName, bool defaultValue) {
+            try {
+                switch (propertyName) {
+                    case nameof(Telescope.AtPark): return (bool)rawComDevice.AtPark;
+                    case nameof(Telescope.CanPark): return (bool)rawComDevice.CanPark;
+                    case nameof(Telescope.CanUnpark): return (bool)rawComDevice.CanUnpark;
+                    case nameof(Telescope.CanFindHome): return (bool)rawComDevice.CanFindHome;
+                    case nameof(Telescope.CanSetPark): return (bool)rawComDevice.CanSetPark;
+                    default: return defaultValue;
+                }
+            } catch (Exception ex) {
+                Logger.Warning($"{Name} - Raw COM read of {propertyName} failed: {ex.Message}");
+                return defaultValue;
+            }
+        }
+
+        /// <summary>Polls until <paramref name="isComplete"/> is true, the token is cancelled, or the timeout elapses.</summary>
+        private async Task PollUntilComplete(Func<bool> isComplete, string operation, CancellationToken token) {
+            var start = DateTime.UtcNow;
+            // Give the mount a moment to start moving before the first check so a not-yet-Slewing state
+            // isn't mistaken for completion.
+            await Task.Delay(200, token);
+            while (!isComplete()) {
+                if (DateTime.UtcNow - start > RAW_COM_OPERATION_TIMEOUT) {
+                    Logger.Warning($"{Name} - {operation} did not report completion within {RAW_COM_OPERATION_TIMEOUT.TotalSeconds:0}s; continuing");
+                    return;
+                }
+                await CoreUtil.Wait(TimeSpan.FromSeconds(profileService.ActiveProfile.ApplicationSettings.DevicePollingInterval), token);
+            }
+        }
+
         private void Initialize() {
             _hasUnknownEpoch = false;
         }
@@ -70,14 +148,18 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool AtHome => GetProperty(nameof(Telescope.AtHome), false);
 
-        public bool AtPark => GetProperty(nameof(Telescope.AtPark), false);
+        // On a V1 COM driver the DriverAccess wrapper forces AtPark to false; read it straight from the
+        // raw COM object instead so NINA sees the mount's true parked state (this value is mirrored into
+        // TelescopeInfo and drives every park-state guard, dome safety check, and the UI).
+        public bool AtPark => UseRawCom ? ReadRawBool(nameof(Telescope.AtPark), false) : GetProperty(nameof(Telescope.AtPark), false);
 
-        // The OverrideCan* profile settings let the user force these capabilities on for drivers that
-        // implement the underlying method (e.g. some SiTech/PlaneWave V1 drivers) but misreport the
-        // matching capability flag as false. See ITelescopeSettings.OverrideCanPark.
-        public bool CanFindHome => profileService.ActiveProfile.TelescopeSettings.OverrideCanFindHome || GetProperty(nameof(Telescope.CanFindHome), false);
+        // The OverrideCan* profile settings let the user force these capabilities on. For a V1 COM driver
+        // the DriverAccess wrapper also forces the Can* flags to false, so we additionally read the real
+        // capability from the raw COM object; the override remains an optional force-on on top of that.
+        // See ITelescopeSettings.OverrideCanPark.
+        public bool CanFindHome => profileService.ActiveProfile.TelescopeSettings.OverrideCanFindHome || (UseRawCom ? ReadRawBool(nameof(Telescope.CanFindHome), false) : GetProperty(nameof(Telescope.CanFindHome), false));
 
-        public bool CanPark => profileService.ActiveProfile.TelescopeSettings.OverrideCanPark || GetProperty(nameof(Telescope.CanPark), false);
+        public bool CanPark => profileService.ActiveProfile.TelescopeSettings.OverrideCanPark || (UseRawCom ? ReadRawBool(nameof(Telescope.CanPark), false) : GetProperty(nameof(Telescope.CanPark), false));
 
         public bool CanPulseGuide => GetProperty(nameof(Telescope.CanPulseGuide), false);
 
@@ -85,7 +167,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool CanSetGuideRates => GetProperty(nameof(Telescope.CanSetGuideRates), false);
 
-        public bool CanSetPark => GetProperty(nameof(Telescope.CanSetPark), false);
+        public bool CanSetPark => UseRawCom ? ReadRawBool(nameof(Telescope.CanSetPark), false) : GetProperty(nameof(Telescope.CanSetPark), false);
 
         public bool CanSetPierSide => GetProperty(nameof(Telescope.CanSetPierSide), false);
 
@@ -104,7 +186,7 @@ namespace NINA.Equipment.Equipment.MyTelescope {
 
         public bool CanSyncAltAz => GetProperty(nameof(Telescope.CanSyncAltAz), false);
 
-        public bool CanUnpark => profileService.ActiveProfile.TelescopeSettings.OverrideCanUnpark || GetProperty(nameof(Telescope.CanUnpark), false);
+        public bool CanUnpark => profileService.ActiveProfile.TelescopeSettings.OverrideCanUnpark || (UseRawCom ? ReadRawBool(nameof(Telescope.CanUnpark), false) : GetProperty(nameof(Telescope.CanUnpark), false));
 
         public Coordinates Coordinates => new Coordinates(RightAscension, Declination, EquatorialSystem, Coordinates.RAType.Hours);
 
@@ -525,7 +607,15 @@ namespace NINA.Equipment.Equipment.MyTelescope {
         public async Task Park(CancellationToken token) {
             if (CanPark) {
                 try {
-                    await device.ParkAsync(token);
+                    if (UseRawCom) {
+                        // The library's ParkAsync helper detects completion via the version-gated AtPark
+                        // (forced false on V1), so it would never finish. Park() itself is not gated: call
+                        // it directly and poll the raw AtPark/Slewing for completion instead.
+                        device.Park();
+                        await PollUntilComplete(() => AtPark || !Slewing, "Park", token);
+                    } else {
+                        await device.ParkAsync(token);
+                    }
                     InvalidatePropertyCache();
                 } catch (OperationCanceledException) {
                     throw;
@@ -659,7 +749,14 @@ namespace NINA.Equipment.Equipment.MyTelescope {
         public async Task FindHome(CancellationToken token) {
             if (CanFindHome) {
                 try {
-                    await device.FindHomeAsync(token);
+                    if (UseRawCom) {
+                        // FindHome() is hard-gated in the DriverAccess wrapper (throws on V1). Call it on the
+                        // raw COM object to bypass the version check, then poll Slewing/AtHome for completion.
+                        rawComDevice.FindHome();
+                        await PollUntilComplete(() => AtHome || !Slewing, "FindHome", token);
+                    } else {
+                        await device.FindHomeAsync(token);
+                    }
                     InvalidatePropertyCache();
                 } catch(OperationCanceledException) {
                     throw;
@@ -673,7 +770,14 @@ namespace NINA.Equipment.Equipment.MyTelescope {
         public async Task Unpark(CancellationToken token) {
             if (CanUnpark) {
                 try {
-                    await device.UnparkAsync(token);
+                    if (UseRawCom) {
+                        // UnparkAsync polls the version-gated AtPark (forced false on V1) and returns instantly.
+                        // Unpark() is not gated: call it directly and poll the raw AtPark clearing for completion.
+                        device.Unpark();
+                        await PollUntilComplete(() => !AtPark, "Unpark", token);
+                    } else {
+                        await device.UnparkAsync(token);
+                    }
                     InvalidatePropertyCache();
                 } catch(OperationCanceledException) {
                     throw;
@@ -1064,11 +1168,16 @@ namespace NINA.Equipment.Equipment.MyTelescope {
         protected override Task PostConnect() {
             Initialize();
             Logger.Info($"{Name} - ASCOM Interface Version: {InterfaceVersion}");
+            ResolveRawComDevice();
             EquatorialSystem = DetermineEquatorialSystem();
             trackingModes = GetTrackingModes();
             CheckMountTime();
 
             return Task.CompletedTask;
+        }
+
+        protected override void PostDisconnect() {
+            rawComDevice = null;
         }
 
         protected override ITelescopeV4 GetInstance() {
